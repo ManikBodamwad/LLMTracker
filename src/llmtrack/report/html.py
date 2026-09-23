@@ -120,7 +120,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <div class="container">
   <div class="header">
     <div class="title-row">
-      <h1>⚡ llmtrack Cost Report</h1>
+      <h1>llmtrack Cost Report</h1>
       <span class="period-badge">Last {{ days }} Days</span>
     </div>
     <div class="stats-grid">

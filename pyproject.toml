@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "llm-cost-track"
-version = "0.2.0"
+version = "0.2.1"
 description = "LLM cost attribution per feature — track which parts of your product are spending your AI budget"
 readme = "README.md"
 license = { text = "MIT" }

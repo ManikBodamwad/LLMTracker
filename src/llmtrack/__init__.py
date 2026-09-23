@@ -9,7 +9,7 @@ from llmtrack.storage.memory import MemoryStorage
 from llmtrack.storage.sqlite import SQLiteStorage
 from llmtrack.tracker import CallEvent, CostTracker
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 __all__ = [
     "CallEvent",
     "CostTracker",
