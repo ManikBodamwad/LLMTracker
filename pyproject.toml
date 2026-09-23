@@ -1,0 +1,72 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "llm-cost-track"
+version = "0.2.0"
+description = "LLM cost attribution per feature — track which parts of your product are spending your AI budget"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Manik", email = "your-email@example.com" }]
+keywords = ["llm", "cost", "tracking", "openai", "anthropic", "observability", "attribution"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+requires-python = ">=3.9"
+dependencies = [
+  "openai>=1.0.0",
+  "anthropic>=0.20.0",
+  "pydantic>=2.0.0",
+  "rich>=13.0.0",
+  "jinja2>=3.1.0",
+  "click>=8.0.0",
+  "httpx>=0.24.0",
+]
+
+[project.optional-dependencies]
+litellm = ["litellm>=1.0.0"]
+dev = [
+  "pytest>=7.0.0",
+  "pytest-cov>=4.0.0",
+  "pytest-asyncio>=0.21.0",
+  "black>=23.0.0",
+  "ruff>=0.1.0",
+  "mypy>=1.0.0",
+]
+
+[project.scripts]
+llmtrack = "llmtrack.report.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ManikBodamwad/LLMTracker"
+Repository = "https://github.com/ManikBodamwad/LLMTracker"
+Issues = "https://github.com/ManikBodamwad/LLMTracker/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/llmtrack"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
+
+[tool.black]
+line-length = 88
+target-version = ["py39"]

@@ -1,0 +1,28 @@
+[
+  {
+    "id": "event-1",
+    "feature": "doc_summary",
+    "model": "gpt-4o",
+    "provider": "openai",
+    "input_tokens": 1000,
+    "output_tokens": 500,
+    "total_tokens": 1500,
+    "cost_usd": 0.0075,
+    "latency_ms": 1200.5,
+    "timestamp": "2025-01-15T12:00:00+00:00",
+    "metadata": { "user_id": "usr_123" }
+  },
+  {
+    "id": "event-2",
+    "feature": "chat_support",
+    "model": "claude-3-5-sonnet-20241022",
+    "provider": "anthropic",
+    "input_tokens": 500,
+    "output_tokens": 200,
+    "total_tokens": 700,
+    "cost_usd": 0.0045,
+    "latency_ms": 850.0,
+    "timestamp": "2025-01-15T12:05:00+00:00",
+    "metadata": {}
+  }
+]
