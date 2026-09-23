@@ -8,7 +8,7 @@ version = "0.2.0"
 description = "LLM cost attribution per feature — track which parts of your product are spending your AI budget"
 readme = "README.md"
 license = { text = "MIT" }
-authors = [{ name = "Manik", email = "your-email@example.com" }]
+authors = [{ name = "Manik Bodamwad" }]
 keywords = ["llm", "cost", "tracking", "openai", "anthropic", "observability", "attribution"]
 classifiers = [
   "Development Status :: 3 - Alpha",
