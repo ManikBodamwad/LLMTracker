@@ -56,7 +56,7 @@ def patch_anthropic(tracker: CostTracker) -> None:
 
                     return response
 
-                cls_messages.create = patched_sync_create
+                cls_messages.create = patched_sync_create  # type: ignore[method-assign,assignment]
 
             if hasattr(msg_res, "AsyncMessages"):
                 cls_async_messages = msg_res.AsyncMessages
@@ -84,6 +84,6 @@ def patch_anthropic(tracker: CostTracker) -> None:
 
                     return response
 
-                cls_async_messages.create = patched_async_create
+                cls_async_messages.create = patched_async_create  # type: ignore[method-assign,assignment]
     except Exception:
         pass

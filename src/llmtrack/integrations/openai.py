@@ -57,7 +57,7 @@ def patch_openai(tracker: CostTracker) -> None:
 
                     return response
 
-                cls_completions.create = patched_sync_create
+                cls_completions.create = patched_sync_create  # type: ignore[method-assign,assignment]
 
             if hasattr(chat_mod, "completions") and hasattr(
                 chat_mod.completions, "AsyncCompletions"
@@ -88,7 +88,7 @@ def patch_openai(tracker: CostTracker) -> None:
 
                     return response
 
-                cls_async_completions.create = patched_async_create
+                cls_async_completions.create = patched_async_create  # type: ignore[method-assign,assignment]
     except Exception:
         pass
 
@@ -117,6 +117,6 @@ def patch_openai(tracker: CostTracker) -> None:
 
                 return response
 
-            openai.chat.completions.create = patched_create
+            openai.chat.completions.create = patched_create  # type: ignore[method-assign,assignment]
     except Exception:
         pass
