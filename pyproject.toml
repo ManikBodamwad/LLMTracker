@@ -4,11 +4,16 @@ build-backend = "hatchling.build"
 
 [project]
 name = "llm-cost-track"
-version = "0.2.1"
+version = "0.2.2"
 description = "LLM cost attribution per feature — track which parts of your product are spending your AI budget"
 readme = "README.md"
 license = { text = "MIT" }
-authors = [{ name = "Manik Bodamwad" }]
+authors = [
+  { name = "Manik Bodamwad", email = "manikwork24@gmail.com" }
+]
+maintainers = [
+  { name = "Manik Bodamwad", email = "manikwork24@gmail.com" }
+]
 keywords = ["llm", "cost", "tracking", "openai", "anthropic", "observability", "attribution"]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -49,8 +54,10 @@ llmtrack = "llmtrack.report.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/ManikBodamwad/LLMTracker"
+Documentation = "https://github.com/ManikBodamwad/LLMTracker/blob/main/docs/usage.md"
 Repository = "https://github.com/ManikBodamwad/LLMTracker"
 Issues = "https://github.com/ManikBodamwad/LLMTracker/issues"
+Changelog = "https://github.com/ManikBodamwad/LLMTracker/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/llmtrack"]
