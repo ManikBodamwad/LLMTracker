@@ -26,12 +26,11 @@ def patch_anthropic(tracker: CostTracker) -> None:
 
     # Patch sync messages.create
     try:
-        if hasattr(anthropic_sdk, "resources") and hasattr(
-            anthropic_sdk.resources, "messages"
-        ):
-            msg_res = anthropic_sdk.resources.messages
-            if hasattr(msg_res, "Messages"):
-                cls_messages = msg_res.Messages
+        resources = getattr(anthropic_sdk, "resources", None)
+        msg_res = getattr(resources, "messages", None) if resources else None
+        if msg_res is not None:
+            cls_messages = getattr(msg_res, "Messages", None)
+            if cls_messages is not None:
                 original_sync_create = cls_messages.create
 
                 def patched_sync_create(
@@ -58,8 +57,8 @@ def patch_anthropic(tracker: CostTracker) -> None:
 
                 cls_messages.create = patched_sync_create  # type: ignore[method-assign,assignment]
 
-            if hasattr(msg_res, "AsyncMessages"):
-                cls_async_messages = msg_res.AsyncMessages
+            cls_async_messages = getattr(msg_res, "AsyncMessages", None)
+            if cls_async_messages is not None:
                 original_async_create = cls_async_messages.create
 
                 async def patched_async_create(

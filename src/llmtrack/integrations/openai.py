@@ -26,69 +26,72 @@ def patch_openai(tracker: CostTracker) -> None:
 
     # Patch instance/class method on Completions if available
     try:
-        if hasattr(openai, "resources") and hasattr(openai.resources, "chat"):
-            chat_mod = openai.resources.chat
-            if hasattr(chat_mod, "completions") and hasattr(
-                chat_mod.completions, "Completions"
-            ):
-                cls_completions = chat_mod.completions.Completions
-                original_sync_create = cls_completions.create
+        resources = getattr(openai, "resources", None)
+        chat_mod = getattr(resources, "chat", None) if resources else None
+        if chat_mod is not None:
+            comp_mod = getattr(chat_mod, "completions", None)
+            if comp_mod is not None:
+                cls_completions = getattr(comp_mod, "Completions", None)
+                if cls_completions is not None:
+                    original_sync_create = cls_completions.create
 
-                def patched_sync_create(
-                    self_inner: Any, *args: Any, **kwargs: Any
-                ) -> Any:
-                    start = time.time()
-                    response = original_sync_create(self_inner, *args, **kwargs)
-                    latency_ms = (time.time() - start) * 1000
+                    def patched_sync_create(
+                        self_inner: Any, *args: Any, **kwargs: Any
+                    ) -> Any:
+                        start = time.time()
+                        response = original_sync_create(self_inner, *args, **kwargs)
+                        latency_ms = (time.time() - start) * 1000
 
-                    try:
-                        model = kwargs.get("model", "unknown")
-                        usage = getattr(response, "usage", None)
-                        if usage:
-                            tracker.log_call(
-                                model=model,
-                                input_tokens=getattr(usage, "prompt_tokens", 0) or 0,
-                                output_tokens=getattr(usage, "completion_tokens", 0)
-                                or 0,
-                                latency_ms=latency_ms,
-                            )
-                    except Exception:
-                        pass
+                        try:
+                            model = kwargs.get("model", "unknown")
+                            usage = getattr(response, "usage", None)
+                            if usage:
+                                tracker.log_call(
+                                    model=model,
+                                    input_tokens=getattr(usage, "prompt_tokens", 0)
+                                    or 0,
+                                    output_tokens=getattr(usage, "completion_tokens", 0)
+                                    or 0,
+                                    latency_ms=latency_ms,
+                                )
+                        except Exception:
+                            pass
 
-                    return response
+                        return response
 
-                cls_completions.create = patched_sync_create  # type: ignore[method-assign,assignment]
+                    cls_completions.create = patched_sync_create  # type: ignore[method-assign,assignment]
 
-            if hasattr(chat_mod, "completions") and hasattr(
-                chat_mod.completions, "AsyncCompletions"
-            ):
-                cls_async_completions = chat_mod.completions.AsyncCompletions
-                original_async_create = cls_async_completions.create
+                cls_async_completions = getattr(comp_mod, "AsyncCompletions", None)
+                if cls_async_completions is not None:
+                    original_async_create = cls_async_completions.create
 
-                async def patched_async_create(
-                    self_inner: Any, *args: Any, **kwargs: Any
-                ) -> Any:
-                    start = time.time()
-                    response = await original_async_create(self_inner, *args, **kwargs)
-                    latency_ms = (time.time() - start) * 1000
+                    async def patched_async_create(
+                        self_inner: Any, *args: Any, **kwargs: Any
+                    ) -> Any:
+                        start = time.time()
+                        response = await original_async_create(
+                            self_inner, *args, **kwargs
+                        )
+                        latency_ms = (time.time() - start) * 1000
 
-                    try:
-                        model = kwargs.get("model", "unknown")
-                        usage = getattr(response, "usage", None)
-                        if usage:
-                            tracker.log_call(
-                                model=model,
-                                input_tokens=getattr(usage, "prompt_tokens", 0) or 0,
-                                output_tokens=getattr(usage, "completion_tokens", 0)
-                                or 0,
-                                latency_ms=latency_ms,
-                            )
-                    except Exception:
-                        pass
+                        try:
+                            model = kwargs.get("model", "unknown")
+                            usage = getattr(response, "usage", None)
+                            if usage:
+                                tracker.log_call(
+                                    model=model,
+                                    input_tokens=getattr(usage, "prompt_tokens", 0)
+                                    or 0,
+                                    output_tokens=getattr(usage, "completion_tokens", 0)
+                                    or 0,
+                                    latency_ms=latency_ms,
+                                )
+                        except Exception:
+                            pass
 
-                    return response
+                        return response
 
-                cls_async_completions.create = patched_async_create  # type: ignore[method-assign,assignment]
+                    cls_async_completions.create = patched_async_create  # type: ignore[method-assign,assignment]
     except Exception:
         pass
 

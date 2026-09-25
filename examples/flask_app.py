@@ -55,7 +55,7 @@ def support_chat():
 
 @app.route("/api/costs", methods=["GET"])
 def get_costs():
-    days = int(request.args.get("days", 7))
+    days = request.args.get("days", default=7, type=int)
     return jsonify(tracker.summary(days=days))
 
 

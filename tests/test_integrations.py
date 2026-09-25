@@ -19,7 +19,7 @@ def test_global_context_feature():
 
 def test_resolve_pricing_edge_cases():
     assert _resolve_pricing("") == FALLBACK_PRICING
-    assert _resolve_pricing(None) == FALLBACK_PRICING
+    assert _resolve_pricing(None) == FALLBACK_PRICING  # type: ignore[arg-type]
     assert _resolve_pricing("GPT-4O")["input"] == 2.50
     assert _resolve_pricing("CLAUDE-3-5-SONNET")["input"] == 3.00
 
