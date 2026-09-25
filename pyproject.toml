@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "llm-cost-track"
-version = "0.2.2"
+version = "0.3.0"
 description = "LLM cost attribution per feature — track which parts of your product are spending your AI budget"
 readme = "README.md"
 license = { text = "MIT" }
@@ -40,6 +40,11 @@ dependencies = [
 
 [project.optional-dependencies]
 litellm = ["litellm>=1.0.0"]
+examples = [
+  "flask>=2.0.0",
+  "fastapi>=0.100.0",
+  "uvicorn>=0.20.0",
+]
 dev = [
   "pytest>=7.0.0",
   "pytest-cov>=4.0.0",
