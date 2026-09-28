@@ -7,6 +7,8 @@ __pycache__/
 dist/
 build/
 *.db
+*.db-wal
+*.db-shm
 *.html
 .mypy_cache/
 .ruff_cache/

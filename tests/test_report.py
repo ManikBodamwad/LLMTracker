@@ -93,3 +93,51 @@ def test_cli_report_and_clear(tmp_path):
     assert res_clear.exit_code == 0
     assert "Database cleared" in res_clear.output
     assert storage.query(days=7) == []
+
+
+def test_budget_alert_fires_automatically_and_only_once_per_day(tracker):
+    calls = []
+    tracker.set_budget_alert(
+        "expensive", daily_limit_usd=0.01, callback=lambda *a: calls.append(a)
+    )
+
+    tracker.log_call("gpt-4o", 100, 100, feature="expensive")
+    assert calls == []  # still under the limit
+
+    tracker.log_call("gpt-4o", 10_000, 5_000, feature="expensive")
+    assert len(calls) == 1
+    feature_name, spent, limit = calls[0]
+    assert (feature_name, limit) == ("expensive", 0.01)
+    assert spent >= limit
+
+    tracker.log_call("gpt-4o", 10_000, 5_000, feature="expensive")
+    assert len(calls) == 1  # already notified today
+
+
+def test_budget_alert_ignores_other_features_and_survives_bad_callback(tracker):
+    def boom(*_):
+        raise RuntimeError("callback bug")
+
+    tracker.set_budget_alert("watched", daily_limit_usd=0.0001, callback=boom)
+
+    tracker.log_call("gpt-4o", 10_000, 5_000, feature="other")  # not watched
+    tracker.log_call("gpt-4o", 10_000, 5_000, feature="watched")  # must not raise
+
+
+def test_check_all_reports_over_limit_alerts_without_renotifying(tracker):
+    calls = []
+    tracker.set_budget_alert("f", 0.0001, callback=lambda *a: calls.append(a))
+    tracker.log_call("gpt-4o", 10_000, 5_000, feature="f")
+    assert len(calls) == 1
+
+    assert len(AlertManager.check_all()) == 1
+    assert len(calls) == 1
+
+
+def test_html_report_escapes_feature_names(tracker, tmp_path):
+    tracker.log_call("gpt-4o", 10, 10, feature="<script>alert(1)</script>")
+    path = tmp_path / "r.html"
+    tracker.report(output="html", filepath=str(path))
+    html = path.read_text()
+    assert "<script>alert(1)</script>" not in html
+    assert "&lt;script&gt;" in html

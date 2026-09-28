@@ -4,8 +4,9 @@ a full terminal report + HTML dashboard.
 
 Run this to see llmtrack in action. No real API keys needed.
 """
+
 import time
-import random
+
 from llmtrack import CostTracker
 from llmtrack.storage.memory import MemoryStorage
 
@@ -22,31 +23,28 @@ tracker = CostTracker(storage=MemoryStorage(), auto_patch=False)
 
 sample_data = [
     # (feature, model, input_tokens, output_tokens, latency_ms)
-
     # Document summarization — heavy GPT-4o usage
     ("document_summarization", "gpt-4o", 1200, 450, 1840),
-    ("document_summarization", "gpt-4o", 980,  380, 1620),
+    ("document_summarization", "gpt-4o", 980, 380, 1620),
     ("document_summarization", "gpt-4o", 1450, 520, 2100),
-    ("document_summarization", "gpt-4o", 870,  310, 1480),
+    ("document_summarization", "gpt-4o", 870, 310, 1480),
     ("document_summarization", "gpt-4o", 1100, 420, 1780),
     ("document_summarization", "gpt-4o", 1320, 490, 1920),
-    ("document_summarization", "gpt-4o", 760,  280, 1340),
+    ("document_summarization", "gpt-4o", 760, 280, 1340),
     ("document_summarization", "gpt-4o", 1050, 400, 1700),
-
     # Customer support — cheaper model, high volume
-    ("customer_support", "gpt-4o-mini", 180,  140, 320),
-    ("customer_support", "gpt-4o-mini", 210,  165, 380),
-    ("customer_support", "gpt-4o-mini", 155,  120, 290),
-    ("customer_support", "gpt-4o-mini", 230,  180, 410),
-    ("customer_support", "gpt-4o-mini", 195,  150, 345),
-    ("customer_support", "gpt-4o-mini", 175,  135, 315),
-    ("customer_support", "gpt-4o-mini", 220,  170, 395),
-    ("customer_support", "gpt-4o-mini", 200,  155, 360),
-    ("customer_support", "gpt-4o-mini", 185,  145, 330),
-    ("customer_support", "gpt-4o-mini", 215,  168, 385),
-    ("customer_support", "gpt-4o-mini", 190,  148, 340),
-    ("customer_support", "gpt-4o-mini", 205,  160, 370),
-
+    ("customer_support", "gpt-4o-mini", 180, 140, 320),
+    ("customer_support", "gpt-4o-mini", 210, 165, 380),
+    ("customer_support", "gpt-4o-mini", 155, 120, 290),
+    ("customer_support", "gpt-4o-mini", 230, 180, 410),
+    ("customer_support", "gpt-4o-mini", 195, 150, 345),
+    ("customer_support", "gpt-4o-mini", 175, 135, 315),
+    ("customer_support", "gpt-4o-mini", 220, 170, 395),
+    ("customer_support", "gpt-4o-mini", 200, 155, 360),
+    ("customer_support", "gpt-4o-mini", 185, 145, 330),
+    ("customer_support", "gpt-4o-mini", 215, 168, 385),
+    ("customer_support", "gpt-4o-mini", 190, 148, 340),
+    ("customer_support", "gpt-4o-mini", 205, 160, 370),
     # Search autocomplete — very cheap, massive volume
     ("search_autocomplete", "gpt-3.5-turbo", 45, 25, 95),
     ("search_autocomplete", "gpt-3.5-turbo", 38, 20, 82),
@@ -60,14 +58,12 @@ sample_data = [
     ("search_autocomplete", "gpt-3.5-turbo", 39, 21, 85),
     ("search_autocomplete", "gpt-3.5-turbo", 46, 24, 96),
     ("search_autocomplete", "gpt-3.5-turbo", 42, 22, 90),
-
     # Invoice extraction — expensive, mission-critical
     ("invoice_extraction", "gpt-4o", 1800, 620, 2840),
     ("invoice_extraction", "gpt-4o", 2100, 740, 3200),
     ("invoice_extraction", "gpt-4o", 1650, 580, 2680),
     ("invoice_extraction", "gpt-4o", 1950, 690, 3050),
     ("invoice_extraction", "gpt-4o", 1720, 600, 2760),
-
     # Code review — Claude usage
     ("code_review", "claude-3-5-sonnet", 2200, 800, 3400),
     ("code_review", "claude-3-5-sonnet", 1850, 670, 2950),
@@ -115,8 +111,12 @@ print("=" * 60)
 print(f"  Total spend (7 days):     ${summary['total_cost_usd']:.4f}")
 print(f"  Total LLM calls:          {summary['total_calls']:,}")
 print(f"  Most expensive feature:   {most_expensive}")
-print(f"  Highest call volume:      {most_calls} ({features[most_calls]['calls']:,} calls)")
-print(f"  Cheapest per call:        {cheapest_per_call} (${features[cheapest_per_call]['avg_cost_per_call']:.6f}/call)")
+print(
+    f"  Highest call volume:      {most_calls} ({features[most_calls]['calls']:,} calls)"
+)
+print(
+    f"  Cheapest per call:        {cheapest_per_call} (${features[cheapest_per_call]['avg_cost_per_call']:.6f}/call)"
+)
 print()
 
 # Generate HTML report

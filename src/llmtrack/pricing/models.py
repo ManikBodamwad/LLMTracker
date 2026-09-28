@@ -1,6 +1,7 @@
 """
 LLM model pricing database.
-Prices are per 1M tokens in USD.
+Prices are per 1M tokens in USD. The table is static and bundled with the
+package; use ``register_custom_model`` to add or override entries.
 Last updated: September 2026
 
 Sources:
@@ -14,9 +15,14 @@ Sources:
 - Cohere: https://cohere.com/pricing
 """
 
-from typing import Dict, List
+from dataclasses import dataclass
+from typing import Dict, List, Tuple
+
+from llmtrack.pricing.providers import infer_provider
 
 # Structure: model_name -> {"input": price_per_1M, "output": price_per_1M}
+# Optional keys "cache_read" / "cache_write" hold absolute prices per 1M
+# tokens for cached prompt tokens; when absent, provider defaults apply.
 MODEL_PRICING: Dict[str, Dict[str, float]] = {
     # --------------------------------------------------------------------------
     # OpenAI Models
@@ -230,56 +236,145 @@ MODEL_ALIASES: Dict[str, str] = {
 FALLBACK_PRICING: Dict[str, float] = {"input": 1.00, "output": 3.00}
 
 
-def get_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+# Cached prompt-token price as a multiple of the base input price, per provider.
+# (cache_read_multiplier, cache_write_multiplier). Providers not listed are
+# billed at the full input price, which can only over-estimate.
+CACHE_MULTIPLIERS: Dict[str, Tuple[float, float]] = {
+    "anthropic": (0.10, 1.25),
+    "openai": (0.50, 1.00),
+    "google": (0.25, 1.00),
+    "deepseek": (0.10, 1.00),
+}
+
+
+@dataclass(frozen=True)
+class CostEstimate:
+    """Result of a cost calculation."""
+
+    cost_usd: float
+    #: True when the price came from fuzzy matching or the fallback rate rather
+    #: than an exact/alias/normalized table entry.
+    estimated: bool
+
+
+def get_cost(
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    cached_input_tokens: int = 0,
+    cache_creation_tokens: int = 0,
+) -> float:
     """
     Calculate cost for a given model and token counts.
 
     Args:
         model: Model name string (e.g. "gpt-4o", "claude-3-7-sonnet", "deepseek-r1")
-        input_tokens: Number of input/prompt tokens
+        input_tokens: Total number of input/prompt tokens, *including* any
+            cached and cache-creation tokens.
         output_tokens: Number of output/completion tokens
+        cached_input_tokens: Portion of ``input_tokens`` served from a prompt cache.
+        cache_creation_tokens: Portion of ``input_tokens`` written to a prompt cache.
 
     Returns:
         Cost in USD as float rounded to 8 decimal places.
     """
-    pricing = _resolve_pricing(model)
-    input_cost = (input_tokens / 1_000_000) * pricing["input"]
+    return estimate_cost(
+        model,
+        input_tokens,
+        output_tokens,
+        cached_input_tokens=cached_input_tokens,
+        cache_creation_tokens=cache_creation_tokens,
+    ).cost_usd
+
+
+def estimate_cost(
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    cached_input_tokens: int = 0,
+    cache_creation_tokens: int = 0,
+) -> CostEstimate:
+    """Like :func:`get_cost`, but also reports whether the price was estimated."""
+    pricing, source = resolve_pricing(model)
+
+    cached = max(0, min(cached_input_tokens, input_tokens))
+    created = max(0, min(cache_creation_tokens, input_tokens - cached))
+    regular = input_tokens - cached - created
+
+    read_mult, write_mult = CACHE_MULTIPLIERS.get(infer_provider(model), (1.0, 1.0))
+    read_price = pricing.get("cache_read", pricing["input"] * read_mult)
+    write_price = pricing.get("cache_write", pricing["input"] * write_mult)
+
+    input_cost = (
+        regular * pricing["input"] + cached * read_price + created * write_price
+    ) / 1_000_000
     output_cost = (output_tokens / 1_000_000) * pricing["output"]
-    return round(input_cost + output_cost, 8)
+    return CostEstimate(
+        cost_usd=round(input_cost + output_cost, 8),
+        estimated=source in ("fuzzy", "fallback"),
+    )
+
+
+def resolve_pricing(model: str) -> Tuple[Dict[str, float], str]:
+    """
+    Resolve a model name to ``(pricing, source)``.
+
+    ``source`` is one of ``"exact"``, ``"alias"``, ``"normalized"`` (case or
+    vendor-prefix differences only), ``"fuzzy"`` (a known model name appears in
+    the string as a whole token) or ``"fallback"`` (unknown model).
+    """
+    if not model or not isinstance(model, str):
+        return FALLBACK_PRICING, "fallback"
+
+    if model in MODEL_PRICING:
+        return MODEL_PRICING[model], "exact"
+    if model in MODEL_ALIASES and MODEL_ALIASES[model] in MODEL_PRICING:
+        return MODEL_PRICING[MODEL_ALIASES[model]], "alias"
+
+    model_lower = model.lower().strip()
+    candidates = [model_lower]
+    if "/" in model_lower:
+        candidates.append(model_lower.rsplit("/", 1)[-1])
+
+    lowered_pricing = {k.lower(): v for k, v in MODEL_PRICING.items()}
+    lowered_aliases = {k.lower(): v for k, v in MODEL_ALIASES.items()}
+    for name in candidates:
+        if name in lowered_pricing:
+            return lowered_pricing[name], "normalized"
+        target = lowered_aliases.get(name)
+        if target in MODEL_PRICING:
+            return MODEL_PRICING[target], "normalized"
+
+    # Fuzzy: longest known model name that appears as a whole token, e.g.
+    # "claude-3-5-sonnet-20241022-v2:0" or "us.anthropic.claude-3-5-haiku-x".
+    # Deliberately NOT bidirectional: "gpt-4.1" must not match "gpt-4".
+    for key in sorted(MODEL_PRICING, key=len, reverse=True):
+        if _contains_token(model_lower, key.lower()):
+            return MODEL_PRICING[key], "fuzzy"
+
+    return FALLBACK_PRICING, "fallback"
 
 
 def _resolve_pricing(model: str) -> Dict[str, float]:
-    """Resolve model name to pricing, with case-insensitivity, alias, and fuzzy matching."""
-    if not model:
-        return FALLBACK_PRICING
+    """Resolve model name to a pricing dict (see :func:`resolve_pricing`)."""
+    return resolve_pricing(model)[0]
 
-    # Exact match
-    if model in MODEL_PRICING:
-        return MODEL_PRICING[model]
 
-    # Alias match
-    if model in MODEL_ALIASES:
-        return MODEL_PRICING[MODEL_ALIASES[model]]
-
-    # Case-insensitive direct match
-    model_lower = model.lower().strip()
-    for key, val in MODEL_PRICING.items():
-        if key.lower() == model_lower:
-            return val
-
-    # Case-insensitive alias match
-    for alias, target in MODEL_ALIASES.items():
-        if alias.lower() == model_lower:
-            return MODEL_PRICING[target]
-
-    # Substring / fuzzy match (prefer longer matching keys first)
-    sorted_keys = sorted(MODEL_PRICING.keys(), key=len, reverse=True)
-    for key in sorted_keys:
-        if key.lower() in model_lower or model_lower in key.lower():
-            return MODEL_PRICING[key]
-
-    # Fallback
-    return FALLBACK_PRICING
+def _contains_token(haystack: str, needle: str) -> bool:
+    """True if ``needle`` occurs in ``haystack`` delimited by non-alphanumerics."""
+    start = 0
+    while True:
+        i = haystack.find(needle, start)
+        if i < 0:
+            return False
+        j = i + len(needle)
+        before_ok = i == 0 or not haystack[i - 1].isalnum()
+        after_ok = j == len(haystack) or (
+            not haystack[j].isalnum() and haystack[j] != "."
+        )
+        if before_ok and after_ok:
+            return True
+        start = i + 1
 
 
 def list_models() -> List[str]:

@@ -34,7 +34,7 @@ invoice_extraction:         $430  (11%)  ← This is mission-critical, keep it
 
 Most AI engineering teams know their total monthly LLM bill. Nobody knows which product feature is causing it.
 
-`llmtrack` is a lightweight, open-source Python library that wraps your LLM calls with feature tags, computes exact token costs against real-time provider pricing, and produces terminal reports and HTML dashboards showing exactly where your AI budget is going — broken down by feature, model, and time period.
+`llmtrack` is a lightweight, open-source Python library that wraps your LLM calls with feature tags, computes token costs against a bundled per-model price table, and produces terminal reports and HTML dashboards showing exactly where your AI budget is going — broken down by feature, model, and time period.
 
 Two lines of code to get started. No external database. No cloud dependency. Fully local.
 
@@ -55,29 +55,28 @@ Two lines of code to get started. No external database. No cloud dependency. Ful
 ## Key Capabilities
 
 - **Feature-Level Attribution**: Tag model invocations using context managers or direct API parameters.
-- **Zero-Friction Auto-Patching**: Transparently captures token usage and latency from OpenAI and Anthropic SDKs with fallback protections.
-- **Thread and Task Isolation**: Safe for high-concurrency web servers using thread-local context separation.
-- **Comprehensive Pricing Engine**: Pre-configured per-million token rates for 50+ frontier and open models with fuzzy alias resolution.
-- **Embedded Persistence**: Lightweight SQLite storage with indexing and automatic connection recycling; zero mandatory external database dependencies.
+- **Zero-Friction Auto-Patching**: Transparently captures token usage and latency from the OpenAI (chat, Responses, embeddings), Anthropic and LiteLLM SDKs, sync and async, including streaming. Patching is idempotent, so calls are never double-counted, and a failure in tracking never breaks your LLM call.
+- **Thread and Task Isolation**: Feature tags use `contextvars`, so concurrent threads and asyncio tasks on the same event loop never tag each other's calls.
+- **Comprehensive Pricing Engine**: Pre-configured per-million token rates for 50+ frontier and open models, with alias resolution, prompt-cache pricing (cached reads and cache writes), and an `estimated_pricing` flag on any call whose model was not recognized.
+- **Embedded Persistence**: Lightweight SQLite storage (WAL mode, indexed, auto-migrating schema); zero mandatory external database dependencies.
 - **Actionable Reporting**: Rich terminal breakdown tables and self-contained interactive HTML dashboards.
-- **Budget Alerts**: Real-time spending thresholds with support for custom webhook and notification callbacks.
+- **Budget Alerts**: Per-feature spending thresholds checked after every tracked call, with support for custom webhook and notification callbacks.
 - **CLI Utility**: Query spend statistics and manage tracking databases directly from the command line.
 
 ---
 
 ## Installation
 
-Install the base package via pip:
+The base package has no LLM SDK dependencies. Install the extra for each SDK you use, so you only pull in what you need:
 
 ```bash
-pip install llm-cost-track
+pip install "llm-cost-track[openai]"      # OpenAI SDK
+pip install "llm-cost-track[anthropic]"   # Anthropic SDK
+pip install "llm-cost-track[litellm]"     # LiteLLM
+pip install "llm-cost-track[all]"         # all of the above
 ```
 
-To include optional LiteLLM integration:
-
-```bash
-pip install "llm-cost-track[litellm]"
-```
+`CostTracker` patches whichever of these SDKs are installed; `log_call()` works with none of them.
 
 ---
 
@@ -261,6 +260,18 @@ tracker.set_budget_alert(
 )
 ```
 
+The limit is compared against the feature's spend over the last 24 hours after every tracked call. When it is reached, the callback runs (or a warning is printed if no callback is given), at most once per UTC day per alert. Callback exceptions are logged and never propagate into your application.
+
+---
+
+## Streaming, Async and Prompt Caching
+
+- **Streaming** (`stream=True`, Anthropic `messages.stream()`) is recorded when the stream finishes or is closed. For OpenAI and LiteLLM chat streams, llmtrack adds `stream_options={"include_usage": True}` when you have not set `stream_options`, so the API reports token usage; this adds one final chunk with an empty `choices` list. Disable with `CostTracker(inject_stream_usage=False)` (streamed calls without usage data are then not recorded).
+- **Async** clients (`AsyncOpenAI`, `AsyncAnthropic`, `litellm.acompletion`) are patched the same way as sync clients.
+- **Prompt caching**: `input_tokens` on an event is the total prompt size, with `cached_input_tokens` and `cache_creation_tokens` as subsets billed at cache rates (Anthropic reads at 0.1x and writes at 1.25x input price; OpenAI reads at 0.5x). Override per model with `register_custom_model(..., cache_read_price_per_1m=...)`.
+- **Multiple trackers**: every tracker created with `auto_patch=True` receives every call; use `tracker.unpatch()` to detach one, or `llmtrack.integrations.restore_all()` to remove the patches entirely.
+- **Unknown models** are billed at a fallback rate ($1.00 in / $3.00 out per 1M tokens), flagged with `CallEvent.estimated_pricing`, counted in `summary()["estimated_calls"]`, and reported once via `warnings.warn`.
+
 ---
 
 ## Reporting
@@ -368,20 +379,23 @@ llmtrack clear --db /var/data/llmtrack.db
 CostTracker(
     storage: Optional[BaseStorage] = None,
     db_path: str = "llmtrack.db",
-    auto_patch: bool = True
+    auto_patch: bool = True,
+    inject_stream_usage: bool = True,
 )
 ```
 
 - **`feature(name: str) -> Generator[None, None, None]`**  
-  Thread-safe context manager that associates all underlying LLM calls with `name`. Supports nesting.
-- **`log_call(model: str, input_tokens: int, output_tokens: int, feature: Optional[str] = None, latency_ms: float = 0.0, metadata: Optional[dict] = None) -> CallEvent`**  
+  Thread- and asyncio-task-safe context manager that associates all underlying LLM calls with `name`. Supports nesting.
+- **`log_call(model: str, input_tokens: int, output_tokens: int, feature: Optional[str] = None, latency_ms: float = 0.0, metadata: Optional[dict] = None, cached_input_tokens: int = 0, cache_creation_tokens: int = 0) -> CallEvent`**  
   Records an individual model call event and persists it to configured storage.
 - **`report(days: int = 7, output: str = "terminal", filepath: Optional[str] = None) -> None`**  
   Renders formatted terminal statistics or writes an interactive HTML dashboard to disk.
 - **`summary(days: int = 7) -> dict`**  
   Returns aggregated cost, token, and call count metrics grouped by feature.
 - **`set_budget_alert(feature: str, daily_limit_usd: float, callback: Optional[Callable] = None) -> None`**  
-  Establishes a daily spending threshold for a designated feature.
+  Registers a 24-hour spending threshold for a feature; checked after every tracked call.
+- **`unpatch() -> None`**  
+  Stops this tracker from receiving calls from the patched SDKs.
 
 ## Real-World Impact
 

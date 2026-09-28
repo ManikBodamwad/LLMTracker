@@ -25,14 +25,13 @@
 
 ## Installation
 
-```bash
-pip install llm-cost-track
-```
-
-With optional LiteLLM integration:
+The base package has no LLM SDK dependencies. Install the extra for each SDK you use:
 
 ```bash
+pip install "llm-cost-track[openai]"
+pip install "llm-cost-track[anthropic]"
 pip install "llm-cost-track[litellm]"
+pip install "llm-cost-track[all]"
 ```
 
 ---
@@ -68,7 +67,7 @@ with tracker.feature("user_onboarding"):
 
 ### Context Manager
 
-Context managers are thread-safe and can be nested. If nested, inner blocks override the active feature tag and revert when exiting:
+Context managers are safe across threads and asyncio tasks (they use `contextvars`) and can be nested. If nested, inner blocks override the active feature tag and revert when exiting:
 
 ```python
 with tracker.feature("batch_pipeline"):
@@ -150,7 +149,7 @@ for feature, stats in summary["features"].items():
 
 ## Budget Alerts
 
-Trigger alerts or custom webhooks when daily spend on a feature exceeds a threshold:
+Trigger alerts or custom webhooks when spend on a feature over the last 24 hours reaches a threshold. The check runs after every tracked call and notifies at most once per UTC day per alert:
 
 ```python
 def send_slack_alert(feature, spent, limit):

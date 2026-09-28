@@ -122,3 +122,74 @@ def test_set_budget_alert_default_print():
     triggered = AlertManager.check_all()
     assert len(triggered) == 1
     assert triggered[0]["feature"] == "feature_warn"
+
+
+def test_litellm_positional_model_and_no_double_patch():
+    tracker = CostTracker(storage=MemoryStorage(), auto_patch=False)
+    mock_resp = MagicMock()
+    mock_resp.usage.prompt_tokens = 10
+    mock_resp.usage.completion_tokens = 5
+    mock_resp.model = "gpt-4o"
+
+    original_fn = litellm.completion
+    try:
+        litellm.completion = MagicMock(return_value=mock_resp)
+        patch_litellm(tracker)
+        patch_litellm(tracker)
+
+        litellm.completion("gpt-4o-mini", [])  # model passed positionally
+
+        (event,) = tracker.storage.query(days=1)
+        assert event.model == "gpt-4o-mini"
+    finally:
+        litellm.completion = original_fn
+
+
+def test_litellm_stream_records_usage_from_final_chunk():
+    tracker = CostTracker(storage=MemoryStorage(), auto_patch=False)
+
+    def chunk(usage=None):
+        c = MagicMock()
+        c.usage = usage
+        c.model = "gpt-4o"
+        return c
+
+    final_usage = MagicMock(prompt_tokens=40, completion_tokens=8)
+    captured = {}
+
+    def fake_completion(*args, **kwargs):
+        captured.update(kwargs)
+        return iter([chunk(), chunk(), chunk(final_usage)])
+
+    original_fn = litellm.completion
+    try:
+        litellm.completion = fake_completion
+        patch_litellm(tracker)
+        chunks = list(litellm.completion(model="gpt-4o", messages=[], stream=True))
+    finally:
+        litellm.completion = original_fn
+
+    assert len(chunks) == 3
+    assert captured["stream_options"] == {"include_usage": True}
+    (event,) = tracker.storage.query(days=1)
+    assert (event.input_tokens, event.output_tokens) == (40, 8)
+
+
+def test_broken_usage_never_breaks_the_user_call(caplog):
+    tracker = CostTracker(storage=MemoryStorage(), auto_patch=False)
+
+    class ExplodingStorage(MemoryStorage):
+        def save(self, event):
+            raise RuntimeError("disk full")
+
+    tracker.storage = ExplodingStorage()
+    original_fn = litellm.completion
+    try:
+        resp = MagicMock(usage=MagicMock(prompt_tokens=1, completion_tokens=1))
+        litellm.completion = MagicMock(return_value=resp)
+        patch_litellm(tracker)
+        with caplog.at_level("WARNING", logger="llmtrack"):
+            assert litellm.completion(model="gpt-4o", messages=[]) is resp
+    finally:
+        litellm.completion = original_fn
+    assert "failed to record" in caplog.text

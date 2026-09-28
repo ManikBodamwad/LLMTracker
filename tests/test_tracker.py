@@ -116,3 +116,58 @@ def test_thread_safety_context(tracker):
         results = [f.result() for f in futures]
 
     assert results == [f"thread_{i}" for i in range(10)]
+
+
+async def test_feature_isolated_between_asyncio_tasks(tracker):
+    import asyncio
+
+    async def worker(name):
+        with tracker.feature(name):
+            await asyncio.sleep(0.01)  # let the other tasks interleave
+            return tracker.log_call("gpt-4o", 10, 10).feature
+
+    results = await asyncio.gather(*(worker(f"task_{i}") for i in range(10)))
+    assert results == [f"task_{i}" for i in range(10)]
+    assert tracker.log_call("gpt-4o", 10, 10).feature == "untagged"
+
+
+def test_global_feature_visible_to_any_tracker(tracker):
+    from llmtrack import feature
+
+    with feature("shared_tag"):
+        assert tracker.log_call("gpt-4o", 1, 1).feature == "shared_tag"
+
+
+def test_cached_tokens_reduce_cost(tracker):
+    full = tracker.log_call("claude-sonnet-4-5", 1_000_000, 0)
+    cached = tracker.log_call(
+        "claude-sonnet-4-5", 1_000_000, 0, cached_input_tokens=1_000_000
+    )
+    assert full.cost_usd == pytest.approx(3.0)
+    assert cached.cost_usd == pytest.approx(0.30)
+    assert cached.cached_input_tokens == 1_000_000
+
+
+def test_unknown_model_flagged_and_warned_once(tracker):
+    import warnings
+
+    from llmtrack import tracker as tracker_module
+
+    tracker_module._WARNED_MODELS.discard("totally-new-model")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        first = tracker.log_call("totally-new-model", 100, 100)
+        tracker.log_call("totally-new-model", 100, 100)
+    assert first.estimated_pricing is True
+    assert len([w for w in caught if "totally-new-model" in str(w.message)]) == 1
+    assert tracker.summary()["estimated_calls"] == 2
+
+    assert tracker.log_call("gpt-4o", 100, 100).estimated_pricing is False
+
+
+def test_infer_provider_handles_prefixes_and_o_series():
+    assert _infer_provider("openai/gpt-4o") == "openai"
+    assert _infer_provider("azure/my-deployment") == "openai"
+    assert _infer_provider("bedrock/anthropic.claude-3-haiku") == "anthropic"
+    assert _infer_provider("o3-mini") == "openai"
+    assert _infer_provider("foo1-bar") == "other"

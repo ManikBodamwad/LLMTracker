@@ -1,88 +1,111 @@
 """
 Patches the Anthropic Python SDK to automatically intercept
-all messages.create calls and log them to the tracker.
+``messages.create`` and ``messages.stream`` calls and log them to the tracker.
 
-Supports both sync and async clients.
+Supports sync and async clients, including streaming, and the beta Messages API.
 """
 
 from __future__ import annotations
 
-import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, List, Optional
+
+from llmtrack.integrations._base import (
+    Target,
+    Usage,
+    as_int,
+    as_str,
+    patch_target,
+    resolve_attr,
+)
 
 if TYPE_CHECKING:
     from llmtrack.tracker import CostTracker
 
 
+def message_usage_from(usage: Any, model: Optional[str] = None) -> Usage:
+    """Anthropic's ``input_tokens`` excludes cache reads/writes; add them back."""
+    fresh = as_int(getattr(usage, "input_tokens", 0))
+    cache_read = as_int(getattr(usage, "cache_read_input_tokens", 0))
+    cache_write = as_int(getattr(usage, "cache_creation_input_tokens", 0))
+    return Usage(
+        model=model,
+        input_tokens=fresh + cache_read + cache_write,
+        output_tokens=as_int(getattr(usage, "output_tokens", 0)),
+        cached_input_tokens=cache_read,
+        cache_creation_tokens=cache_write,
+    )
+
+
+def message_usage(message: Any) -> Optional[Usage]:
+    usage = getattr(message, "usage", None)
+    if not usage:
+        return None
+    return message_usage_from(usage, as_str(getattr(message, "model", None)))
+
+
+class MessageStreamAccumulator:
+    """
+    Raw Messages events: ``message_start`` carries input usage, and each
+    ``message_delta`` carries the cumulative output token count.
+    """
+
+    def __init__(self) -> None:
+        self._usage: Optional[Usage] = None
+
+    def feed(self, chunk: Any) -> None:
+        kind = getattr(chunk, "type", None)
+        if kind == "message_start":
+            message = getattr(chunk, "message", None)
+            self._usage = message_usage(message)
+        elif kind == "message_delta" and self._usage is not None:
+            usage = getattr(chunk, "usage", None)
+            output = as_int(getattr(usage, "output_tokens", 0))
+            if output:
+                self._usage.output_tokens = output
+
+    def usage(self) -> Optional[Usage]:
+        return self._usage
+
+
+def _targets() -> List[Target]:
+    targets: List[Target] = []
+    modules = ("anthropic.resources.messages", "anthropic.resources.beta.messages")
+    for module in modules:
+        for cls_name, is_async in (("Messages", False), ("AsyncMessages", True)):
+            owner = resolve_attr(module, cls_name)
+            if owner is None:
+                continue
+            targets.append(
+                Target(
+                    owner=owner,
+                    attr="create",
+                    extract=message_usage,
+                    is_async=is_async,
+                    make_accumulator=MessageStreamAccumulator,
+                )
+            )
+            targets.append(
+                Target(
+                    owner=owner,
+                    attr="stream",
+                    extract=message_usage,
+                    is_async=is_async,
+                    kind="manager",
+                )
+            )
+    return targets
+
+
 def patch_anthropic(tracker: CostTracker) -> None:
     """
-    Patch the Anthropic SDK to auto-track all message completions.
+    Patch the Anthropic SDK to auto-track message completions.
     Called automatically when CostTracker(auto_patch=True).
+    Safe to call repeatedly and for multiple trackers.
     """
     try:
-        import anthropic as anthropic_sdk
+        import anthropic  # noqa: F401
     except ImportError:
         return
 
-    # Patch sync messages.create
-    try:
-        resources = getattr(anthropic_sdk, "resources", None)
-        msg_res = getattr(resources, "messages", None) if resources else None
-        if msg_res is not None:
-            cls_messages = getattr(msg_res, "Messages", None)
-            if cls_messages is not None:
-                original_sync_create = cls_messages.create
-
-                def patched_sync_create(
-                    self_inner: Any, *args: Any, **kwargs: Any
-                ) -> Any:
-                    start = time.time()
-                    response = original_sync_create(self_inner, *args, **kwargs)
-                    latency_ms = (time.time() - start) * 1000
-
-                    try:
-                        model = kwargs.get("model", "unknown")
-                        usage = getattr(response, "usage", None)
-                        if usage:
-                            tracker.log_call(
-                                model=model,
-                                input_tokens=getattr(usage, "input_tokens", 0) or 0,
-                                output_tokens=getattr(usage, "output_tokens", 0) or 0,
-                                latency_ms=latency_ms,
-                            )
-                    except Exception:
-                        pass
-
-                    return response
-
-                cls_messages.create = patched_sync_create  # type: ignore[method-assign,assignment]
-
-            cls_async_messages = getattr(msg_res, "AsyncMessages", None)
-            if cls_async_messages is not None:
-                original_async_create = cls_async_messages.create
-
-                async def patched_async_create(
-                    self_inner: Any, *args: Any, **kwargs: Any
-                ) -> Any:
-                    start = time.time()
-                    response = await original_async_create(self_inner, *args, **kwargs)
-                    latency_ms = (time.time() - start) * 1000
-
-                    try:
-                        model = kwargs.get("model", "unknown")
-                        usage = getattr(response, "usage", None)
-                        if usage:
-                            tracker.log_call(
-                                model=model,
-                                input_tokens=getattr(usage, "input_tokens", 0) or 0,
-                                output_tokens=getattr(usage, "output_tokens", 0) or 0,
-                                latency_ms=latency_ms,
-                            )
-                    except Exception:
-                        pass
-
-                    return response
-
-                cls_async_messages.create = patched_async_create  # type: ignore[method-assign,assignment]
-    except Exception:
-        pass
+    for target in _targets():
+        patch_target(tracker, target)

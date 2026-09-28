@@ -83,6 +83,13 @@ def print_report(events: List[CallEvent], days: int = 7) -> None:
 
     console.print(table)
 
+    if summary["estimated_calls"]:
+        console.print(
+            f"[dim]{summary['estimated_calls']:,} call(s) used estimated pricing "
+            "(unrecognized model name). Register the model with "
+            "register_custom_model() for exact costs.[/dim]"
+        )
+
 
 @click.group()
 def main() -> None:
